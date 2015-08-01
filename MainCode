@@ -1,0 +1,334 @@
+/*
+ SendDataToGoogleSpreadsheet
+
+ Demonstrates appending a row of data to a Google spreadsheet from the Arduino Yun 
+ using the Temboo Arduino Yun SDK.  
+
+ This example code is in the public domain.
+*/
+
+#include <Bridge.h>
+#include <Temboo.h>
+#include <YunServer.h>
+#include <YunClient.h>
+#include <FileIO.h>
+#include "TembooAccount.h" // contains Temboo account information
+
+/*** SUBSTITUTE YOUR VALUES BELOW: ***/
+
+// Note that for additional security and reusability, you could
+// use #define statements to specify these values in a .h file.
+
+const String GOOGLE_CLIENT_ID = "71675374996-bofa0rusp1vav9c96f5nb1k15j0i9kti.apps.googleusercontent.com";
+const String GOOGLE_CLIENT_SECRET = "Ajnf92zgx3MCU57quCWBaZpV";
+const String GOOGLE_REFRESH_TOKEN = "1/fhEv4FtP7JkeKUipvS3i9IN_oJUvWIMPsjIcrOJ-_dE";
+const String SPREADSHEET_KEY = "1vvL74jDSoFyiy0an1_4JgcR_enqAxL4dFudqzChAVC8";
+
+// the title of the spreadsheet you want to send data to
+// (Note that this must actually be the title of a Google spreadsheet
+// that exists in your Google Drive/Docs account, and is configured
+// as described above.)
+const String SPREADSHEET_TITLE = "TestingSheet";
+int cards = 0;
+int authorized[30];
+int numRuns = 1;   // execution count, so this doesn't run forever
+int maxRuns = 50;   // the max number of times the Google Spreadsheet Choreo should run
+String time = "invalid time";
+String output1 = "n ";
+String output2 = "n ";
+boolean tooutput = false;
+boolean opendoor = false;
+YunServer server;
+
+void setup() {
+ // for debugging, wait until a serial console is connected
+ // Serial.begin(9600);
+ //  while(!Serial);
+
+ // Serial.print("Initializing the bridge... ");
+ Bridge.begin();
+ FileSystem.begin();
+ // Serial.println("Done!\n");
+ server.listenOnLocalhost();
+ server.begin();
+ Console.begin(); 
+ delay(8000);
+
+ Console.println("Starting up");
+ File oldList = FileSystem.open("/mnt/sd/list.txt");
+ boolean filefinished = false;
+ while (filefinished == false) {
+   String nextNumber = oldList.readStringUntil('\n');// until "- ", name is to new line
+   if (nextNumber == ""){
+     filefinished = true;
+     Console.println("File Reading Finished");
+   } else{
+     int nextNumInt = nextNumber.toInt();
+     authorized[cards] = nextNumInt;
+     Console.println(nextNumber);
+   }
+ }
+}
+
+void loop()
+{
+  YunClient client = server.accept();
+  
+  Console.println("Top of Loop");
+
+  // There is a new client?
+  if (client) {
+    // Process request
+    process(client);
+    String output = output1 + " - " + output2 + " ";
+  Console.println(output);
+
+    client.stop();
+    if (true==true){
+      String theRecreation = "";
+      for(int x=0; x<cards; x++){
+        theRecreation += String(authorized[x]);
+        theRecreation += "\n";
+      }
+      if (cards>=1){
+        Process createagain;
+        createagain.runShellCommand("cp /dev/null /mnt/sda1/list.txt");
+      }
+      String theteststring = "This is a test string";
+      File dataFile = FileSystem.open("/mnt/sd/list.txt", FILE_APPEND);
+      dataFile.println(theRecreation);
+      Console.println(theRecreation);
+      dataFile.close();
+
+      /*if (output1 = "added"){
+        File dataFile = FileSystem.open("/mnt/sd/test1.txt", FILE_APPEND);
+        dataFile.println(output2 +"\n");
+        dataFile.close();
+      }else{
+        Console.println("Im in");
+        File transferFile = FileSystem.open("mnt/sd/test2.txt", FILE_APPEND);
+        
+        Process inversePrinting;
+        inversePrinting.runShellCommand("grep -v " + output2 + " mnt/sd/test1.txt");
+        inversePrinting.run();
+        String iwillmakeitprint = inversePrinting.readString();
+        Console.println(iwillmakeitprint);
+        transferFile.println(iwillmakeitprint);
+        transferFile.close();
+        
+        
+        Process clearit;
+        //clearit.runShellCommand("cp /mnt/sda1/test2.txt /mnt/sda1/test1.txt");
+        //clearit.runShellCommand("cp /dev/null /mnt/sda1/test2.txt");
+    }*/
+    }
+  }
+ Serial.println("Waiting...");
+ delay(5000); // wait 5 seconds between AppendRow calls
+}
+
+// this function simulates reading the value of a sensor 
+
+
+void process(YunClient client) {
+  // read the command
+  String command = client.readStringUntil('/');
+
+  // is "digital" command?
+  if (command == "digital") {
+    digitalCommand(client);
+  }else if (command == "analog") {
+    analogCommand(client);
+  }else if (command == "mode") {
+    modeCommand(client);
+  }else if (command == "apply"){
+    apply(client);
+  }else{
+    activate(command);
+   }
+}
+
+
+void activate(String number){
+  boolean add = true;
+  int alreadyhere = 0;
+  int plus = number.toInt();
+  for(int x = 0; x<=cards; x++){
+    if(authorized[x] == plus){
+      add = false;
+      alreadyhere = x;
+    }
+  }
+  if (add == true){
+    authorized[cards] = plus;
+    cards++;
+  } else{
+    authorized[alreadyhere] = 0;
+  }
+   String addorremove = "added";
+   if (add == false){
+     addorremove = "removed";
+   }
+   output1 = addorremove;
+   int removepast = number.length()-2;
+   number.remove(removepast);
+   output2 = number;
+   tooutput = true;
+}
+
+void apply(YunClient client){
+   //client.readStringUntil('/');
+   int id = client.parseInt();
+   String openedornot = "Entry Denied";
+   for(int x = 0; x<=cards; x++){
+    if(authorized[x] == id){
+      opendoor = true;
+      openedornot = "Door opened";
+    }
+  }
+   output1 = String(id);
+   output2 = openedornot;
+   tooutput = true;
+}
+
+void digitalCommand(YunClient client) {
+  int pin, value;
+
+  // Read pin number
+  pin = client.parseInt();
+
+  // If the next character is a '/' it means we have an URL
+  // with a value like: "/digital/13/1"
+  if (client.read() == '/') {
+    value = client.parseInt();
+    digitalWrite(pin, value);
+  }
+  else {
+    value = digitalRead(pin);
+  }
+
+  // Send feedback to client
+  client.print(F("Pin D"));
+  client.print(pin);
+  client.print(F(" set to "));
+  client.println(value);
+
+  // Update datastore key with the current pin value
+  String key = "D";
+  key += pin;
+  Bridge.put(key, String(value));
+}
+
+void analogCommand(YunClient client) {
+  int pin, value;
+
+  // Read pin number
+  pin = client.parseInt();
+
+  // If the next character is a '/' it means we have an URL
+  // with a value like: "/analog/5/120"
+  if (client.read() == '/') {
+    // Read value and execute command
+    value = client.parseInt();
+    analogWrite(pin, value);
+
+    // Send feedback to client
+    client.print(F("Pin D"));
+    client.print(pin);
+    client.print(F(" set to analog "));
+    client.println(value);
+
+    // Update datastore key with the current pin value
+    String key = "D";
+    key += pin;
+    Bridge.put(key, String(value));
+  }
+  else {
+    // Read analog pin
+    value = analogRead(pin);
+
+    // Send feedback to client
+    client.print(F("Pin A"));
+    client.print(pin);
+    client.print(F(" reads analog "));
+    client.println(value);
+
+    // Update datastore key with the current pin value
+    String key = "A";
+    key += pin;
+    Bridge.put(key, String(value));
+  }
+}
+
+void modeCommand(YunClient client) {
+  int pin;
+
+  // Read pin number
+  pin = client.parseInt();
+
+  // If the next character is not a '/' we have a malformed URL
+  if (client.read() != '/') {
+    client.println(F("error"));
+    return;
+  }
+
+  String mode = client.readStringUntil('\r');
+
+  if (mode == "input") {
+    pinMode(pin, INPUT);
+    // Send feedback to client
+    client.print(F("Pin D"));
+    client.print(pin);
+    client.print(F(" configured as INPUT!"));
+    return;
+  }
+
+  if (mode == "output") {
+    pinMode(pin, OUTPUT);
+    // Send feedback to client
+    client.print(F("Pin D"));
+    client.print(pin);
+    client.print(F(" configured as OUTPUT!"));
+    return;
+  }
+
+  client.print(F("error: invalid mode "));
+  client.print(mode);
+}
+void setTime(){
+  time = String("");
+//
+ TembooChoreo GetDateChoreo;
+
+    // Invoke the Temboo client
+    GetDateChoreo.begin();
+ 
+    // Set Temboo account credentials
+    GetDateChoreo.setAccountName(TEMBOO_ACCOUNT);
+    GetDateChoreo.setAppKeyName(TEMBOO_APP_KEY_NAME);
+    GetDateChoreo.setAppKey(TEMBOO_APP_KEY);
+    
+    GetDateChoreo.addInput("Format", "yyyy-MM-dd HH:mm:ss");
+
+    // Identify the Choreo to run
+    GetDateChoreo.setChoreo("/Library/Utilities/Dates/GetDate");
+    
+    // Run the Choreo; when results are available, print them to serial
+    GetDateChoreo.run();
+    String transferer;
+    String holder;
+   while(GetDateChoreo.available()) {
+    holder = GetDateChoreo.readStringUntil('\x1F');
+    transferer = GetDateChoreo.readStringUntil('\x1E');
+    transferer.trim(); // use “trim” to get rid of newlines
+/*     transferer = GetDateChoreo.read();  
+     if (transferer == 30 || transferer == 31) {
+     }else{
+      time = String(time + String(transferer));
+
+     }
+    }*/
+      time = String(time + transferer);
+    GetDateChoreo.close(); 
+}   
+}
